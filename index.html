@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>My Todo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+*{
+  box-sizing:border-box;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:#e9ebf5;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+.app{
+  width:100%;
+  max-width:390px;
+  height:100vh;
+  background:#f4f6fb;
+  display:flex;
+  flex-direction:column;
+  border-radius:28px;
+  overflow:hidden;
+  box-shadow:0 25px 60px rgba(0,0,0,.35);
+}
+
+header{
+  background:linear-gradient(135deg,#667eea,#764ba2);
+  color:#fff;
+  padding:22px 20px 18px;
+}
+
+header h1{margin:0;font-size:22px}
+header p{margin-top:6px;font-size:13px;opacity:.9}
+
+.content{
+  flex:1;
+  padding:18px;
+  overflow-y:auto;
+}
+
+.input-box{
+  background:#fff;
+  padding:16px;
+  border-radius:20px;
+  box-shadow:0 8px 20px rgba(0,0,0,.08);
+}
+
+.input-box input{
+  width:100%;
+  padding:14px;
+  border-radius:14px;
+  border:1px solid #ddd;
+  margin-bottom:12px;
+}
+
+.input-box button{
+  width:100%;
+  padding:14px;
+  border:none;
+  border-radius:16px;
+  background:linear-gradient(135deg,#667eea,#764ba2);
+  color:#fff;
+  font-size:16px;
+  cursor:pointer;
+}
+
+.task{
+  background:#fff;
+  border-radius:18px;
+  padding:14px 16px;
+  margin-top:14px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+}
+
+.task.done{
+  opacity:.5;
+  text-decoration:line-through;
+}
+
+.task-info{cursor:pointer}
+.time{font-size:12px;color:#888;margin-top:4px}
+.delete{font-size:20px;color:#ff4d4d;cursor:pointer}
+</style>
+</head>
+
+<body>
+<div class="app">
+  <header>
+    <h1>📋 My Todo</h1>
+    <p>ตั้งเวลาแล้วมีเสียงแจ้งเตือน (ดัง 3 ครั้ง)</p>
+  </header>
+
+  <div class="content">
+    <div class="input-box">
+      <input id="taskText" placeholder="เพิ่มงาน เช่น กินข้าว">
+      <input id="taskTime" type="datetime-local">
+      <button onclick="addTask()">➕ เพิ่มงาน</button>
+    </div>
+
+    <div id="taskList"></div>
+  </div>
+</div>
+
+<!-- 🔔 Audio -->
+<audio id="alarm">
+  <source src="alarm.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+/* ===== Notification Permission ===== */
+if (Notification.permission !== "granted") {
+  Notification.requestPermission();
+}
+
+/* ===== Audio Unlock ===== */
+const alarm = document.getElementById("alarm");
+let audioUnlocked = false;
+
+function unlockAudio(){
+  if(audioUnlocked) return;
+
+  alarm.volume = 0;
+  alarm.play().then(()=>{
+    alarm.pause();
+    alarm.currentTime = 0;
+    audioUnlocked = true;
+  }).catch(()=>{});
+}
+
+/* ===== Alarm 3 Times ===== */
+let playCount = 0;
+const MAX_PLAY = 3;
+
+function playAlarm3Times(){
+  playCount = 0;
+  alarm.loop = false;
+  alarm.volume = 1;
+  alarm.currentTime = 0;
+
+  alarm.play();
+
+  alarm.onended = () => {
+    playCount++;
+    if(playCount < MAX_PLAY){
+      alarm.currentTime = 0;
+      alarm.play();
+    }else{
+      alarm.onended = null;
+    }
+  };
+}
+
+/* ===== Todo Logic ===== */
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+function save(){
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+}
+
+function addTask(){
+  unlockAudio();
+
+  const text = taskText.value.trim();
+  const time = taskTime.value;
+  if(!text || !time) return alert("กรอกงานและเวลา");
+
+  const task = {
+    text,
+    time,
+    done:false,
+    notified:false
+  };
+
+  tasks.push(task);
+  save();
+  schedule(task);
+
+  taskText.value="";
+  taskTime.value="";
+  render();
+}
+
+function schedule(task){
+  const delay = new Date(task.time) - Date.now();
+  if(delay > 0){
+    setTimeout(()=>{
+      if(!task.done && !task.notified){
+        new Notification("🔔 แจ้งเตือน", {
+          body: task.text
+        });
+
+        playAlarm3Times();
+
+        task.notified = true;
+        save();
+        render();
+      }
+    }, delay);
+  }
+}
+
+function toggle(i){
+  tasks[i].done = !tasks[i].done;
+
+  if(tasks[i].done){
+    alarm.pause();
+    alarm.currentTime = 0;
+    alarm.onended = null;
+  }
+
+  save();
+  render();
+}
+
+function removeTask(i){
+  tasks.splice(i,1);
+  save();
+  render();
+}
+
+function render(){
+  taskList.innerHTML="";
+  tasks.forEach((t,i)=>{
+    const div = document.createElement("div");
+    div.className = "task" + (t.done ? " done" : "");
+    div.innerHTML = `
+      <div class="task-info" onclick="toggle(${i})">
+        ${t.text}
+        <div class="time">${new Date(t.time).toLocaleString()}</div>
+      </div>
+      <div class="delete" onclick="removeTask(${i})">✖</div>
+    `;
+    taskList.appendChild(div);
+  });
+}
+
+/* ตั้งเวลาใหม่เมื่อรีเฟรช */
+tasks.forEach(t=>{
+  if(!t.notified) schedule(t);
+});
+
+render();
+</script>
+</body>
+</html>
